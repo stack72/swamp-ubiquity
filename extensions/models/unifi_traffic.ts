@@ -137,7 +137,13 @@ async function createLocalClient(
     url: string,
     init?: RequestInit,
   ): Promise<Response> {
-    const args = ["-sk", "--connect-timeout", "10", "-X", init?.method || "GET"];
+    const args = [
+      "-sk",
+      "--connect-timeout",
+      "10",
+      "-X",
+      init?.method || "GET",
+    ];
 
     if (init?.headers) {
       const headers = init.headers as Record<string, string>;
@@ -166,7 +172,9 @@ async function createLocalClient(
 
     // Parse status code from header line
     const statusMatch = headerText.match(/HTTP\/[\d.]+ (\d+)/);
-    const status = statusMatch ? parseInt(statusMatch[1]) : (output.success ? 200 : 500);
+    const status = statusMatch
+      ? parseInt(statusMatch[1])
+      : (output.success ? 200 : 500);
 
     // Parse headers
     const responseHeaders = new Headers();
@@ -246,7 +254,11 @@ interface CloudClient {
   client: ApiClient;
   siteName: string;
   hostId: string;
-  rawRequest: (fullPath: string, method?: string, body?: unknown) => Promise<Record<string, unknown>>;
+  rawRequest: (
+    fullPath: string,
+    method?: string,
+    body?: unknown,
+  ) => Promise<Record<string, unknown>>;
 }
 
 async function createCloudClient(
@@ -287,7 +299,11 @@ async function createCloudClient(
   const connectorBase =
     `/v1/connector/consoles/${hostId}/proxy/network/api/s/${siteName}`;
 
-  async function rawRequest(fullPath: string, method = "GET", body?: unknown): Promise<Record<string, unknown>> {
+  async function rawRequest(
+    fullPath: string,
+    method = "GET",
+    body?: unknown,
+  ): Promise<Record<string, unknown>> {
     const resp = await fetch(`${CLOUD_API_BASE}${fullPath}`, {
       method,
       headers,
@@ -309,7 +325,7 @@ async function createCloudClient(
     hostId,
     rawRequest,
     client: {
-      async request(path, method = "GET", body?) {
+      request(path, method = "GET", body?) {
         return rawRequest(`${connectorBase}${path}`, method, body);
       },
       async cleanup() {
@@ -374,7 +390,9 @@ export const model = {
         });
 
         await logWriter.writeLine(
-          `[${new Date().toISOString()}] Starting UniFi traffic collection (${mode} mode)`,
+          `[${
+            new Date().toISOString()
+          }] Starting UniFi traffic collection (${mode} mode)`,
         );
 
         let client: ApiClient;
@@ -406,7 +424,9 @@ export const model = {
           client = cloud.client;
           apiBasePath = "";
           await logWriter.writeLine(
-            `[${new Date().toISOString()}] Connected to site: ${cloud.siteName}`,
+            `[${
+              new Date().toISOString()
+            }] Connected to site: ${cloud.siteName}`,
           );
         }
 
@@ -437,7 +457,8 @@ export const model = {
             },
           );
 
-          const rawHourly = (siteStats as { data?: Array<Record<string, unknown>> }).data || [];
+          const rawHourly =
+            (siteStats as { data?: Array<Record<string, unknown>> }).data || [];
           const hourly = rawHourly.map((h) => ({
             time: h.time as number,
             bytes: (h.bytes as number) || 0,
@@ -498,7 +519,13 @@ export const model = {
           dataHandles.push(siteHandle);
 
           await logWriter.writeLine(
-            `[${new Date().toISOString()}] Site traffic: ${formatBytes(totalBytes)} total | ${formatBytes(totalWanRx)} download | ${formatBytes(totalWanTx)} upload | Peak: ${formatBytes(peakHourEntry.bytes || 0)} at ${new Date(peakHourEntry.time).toLocaleTimeString()}`,
+            `[${new Date().toISOString()}] Site traffic: ${
+              formatBytes(totalBytes)
+            } total | ${formatBytes(totalWanRx)} download | ${
+              formatBytes(totalWanTx)
+            } upload | Peak: ${formatBytes(peakHourEntry.bytes || 0)} at ${
+              new Date(peakHourEntry.time).toLocaleTimeString()
+            }`,
           );
 
           // 2. Collect active client stats
@@ -518,12 +545,14 @@ export const model = {
             const allUsers = await client.request(
               `${apiBasePath}/rest/user`,
             );
-            const rawUsers = (allUsers as { data?: Array<Record<string, unknown>> }).data || [];
+            const rawUsers =
+              (allUsers as { data?: Array<Record<string, unknown>> }).data ||
+              [];
             for (const u of rawUsers) {
               const mac = (u.mac as string || "").toLowerCase();
-              const name = (u.name as string)
-                || (u.hostname as string)
-                || (u.display_name as string);
+              const name = (u.name as string) ||
+                (u.hostname as string) ||
+                (u.display_name as string);
               if (mac && name) {
                 deviceNames[mac] = name;
               }
@@ -535,16 +564,18 @@ export const model = {
           // Source 2: v2/clients/active (fingerprint-resolved display names from cloud API)
           if (cloud) {
             try {
-              const v2Path = `/v1/connector/consoles/${cloud.hostId}/proxy/network/v2/api/site/${cloud.siteName}/clients/active`;
+              const v2Path =
+                `/v1/connector/consoles/${cloud.hostId}/proxy/network/v2/api/site/${cloud.siteName}/clients/active`;
               const v2Result = await cloud.rawRequest(v2Path);
               const v2Clients = Array.isArray(v2Result)
                 ? v2Result
-                : (v2Result as { data?: Array<Record<string, unknown>> }).data || [];
+                : (v2Result as { data?: Array<Record<string, unknown>> })
+                  .data || [];
               for (const vc of v2Clients as Array<Record<string, unknown>>) {
                 const mac = (vc.mac as string || "").toLowerCase();
                 if (mac && !deviceNames[mac]) {
-                  const name = (vc.display_name as string)
-                    || (vc.name as string);
+                  const name = (vc.display_name as string) ||
+                    (vc.name as string);
                   if (name) {
                     deviceNames[mac] = name;
                   }
@@ -556,16 +587,20 @@ export const model = {
           }
 
           await logWriter.writeLine(
-            `[${new Date().toISOString()}] Loaded ${Object.keys(deviceNames).length} device name mappings`,
+            `[${new Date().toISOString()}] Loaded ${
+              Object.keys(deviceNames).length
+            } device name mappings`,
           );
 
-          const rawClients = (clientStats as { data?: Array<Record<string, unknown>> }).data || [];
+          const rawClients =
+            (clientStats as { data?: Array<Record<string, unknown>> }).data ||
+            [];
           const clients = rawClients.map((c) => {
             const mac = (c.mac as string || "").toLowerCase();
-            const displayName = deviceNames[mac]
-              || (c.name as string)
-              || (c.hostname as string)
-              || mac;
+            const displayName = deviceNames[mac] ||
+              (c.name as string) ||
+              (c.hostname as string) ||
+              mac;
             return {
               mac,
               ip: (c.ip as string) || undefined,
@@ -620,11 +655,15 @@ export const model = {
           dataHandles.push(clientHandle);
 
           await logWriter.writeLine(
-            `[${new Date().toISOString()}] Clients: ${clients.length} active (${wiredCount} wired, ${wirelessCount} wireless)`,
+            `[${
+              new Date().toISOString()
+            }] Clients: ${clients.length} active (${wiredCount} wired, ${wirelessCount} wireless)`,
           );
           for (const tc of topClients.slice(0, 5)) {
             await logWriter.writeLine(
-              `  - ${tc.name}: ${formatBytes(tc.totalBytes)} (${tc.percentage}%)`,
+              `  - ${tc.name}: ${
+                formatBytes(tc.totalBytes)
+              } (${tc.percentage}%)`,
             );
           }
 
@@ -644,12 +683,16 @@ export const model = {
                 "POST",
                 { type: "by_cat" },
               );
-              const data = (result as { data?: Array<Record<string, unknown>> }).data || [];
+              const data =
+                (result as { data?: Array<Record<string, unknown>> }).data ||
+                [];
               const nonEmpty = data.filter((d) => Object.keys(d).length > 0);
               if (nonEmpty.length > 0) {
                 dpiData = nonEmpty;
                 await logWriter.writeLine(
-                  `[${new Date().toISOString()}] DPI data from ${endpoint}: ${nonEmpty.length} entries`,
+                  `[${
+                    new Date().toISOString()
+                  }] DPI data from ${endpoint}: ${nonEmpty.length} entries`,
                 );
               }
             } catch {
@@ -659,7 +702,9 @@ export const model = {
 
           if (dpiData.length === 0) {
             await logWriter.writeLine(
-              `[${new Date().toISOString()}] DPI data not yet available — DPI stats accumulate over time as traffic flows through the UDM`,
+              `[${
+                new Date().toISOString()
+              }] DPI data not yet available — DPI stats accumulate over time as traffic flows through the UDM`,
             );
           }
 
@@ -689,16 +734,18 @@ export const model = {
             }
           }
 
-          const categories = Object.entries(categoryTotals).map(([code, totals]) => {
-            const catCode = parseInt(code);
-            return {
-              category: DPI_CATEGORIES[catCode] || `Category ${catCode}`,
-              categoryCode: catCode,
-              rxBytes: totals.rx,
-              txBytes: totals.tx,
-              totalBytes: totals.rx + totals.tx,
-            };
-          }).sort((a, b) => b.totalBytes - a.totalBytes);
+          const categories = Object.entries(categoryTotals).map(
+            ([code, totals]) => {
+              const catCode = parseInt(code);
+              return {
+                category: DPI_CATEGORIES[catCode] || `Category ${catCode}`,
+                categoryCode: catCode,
+                rxBytes: totals.rx,
+                txBytes: totals.tx,
+                totalBytes: totals.rx + totals.tx,
+              };
+            },
+          ).sort((a, b) => b.totalBytes - a.totalBytes);
 
           const totalDpiBytes = categories.reduce(
             (s, c) => s + c.totalBytes,
@@ -727,11 +774,15 @@ export const model = {
           dataHandles.push(dpiHandle);
 
           await logWriter.writeLine(
-            `[${new Date().toISOString()}] DPI: ${categories.length} categories detected`,
+            `[${
+              new Date().toISOString()
+            }] DPI: ${categories.length} categories detected`,
           );
           for (const tc of topCategories.slice(0, 5)) {
             await logWriter.writeLine(
-              `  - ${tc.category}: ${formatBytes(tc.totalBytes)} (${tc.percentage}%)`,
+              `  - ${tc.category}: ${
+                formatBytes(tc.totalBytes)
+              } (${tc.percentage}%)`,
             );
           }
 
