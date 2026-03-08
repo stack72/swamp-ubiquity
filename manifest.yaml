@@ -1,0 +1,13 @@
+manifestVersion: 1
+name: "@stack72/ubiquity"
+version: "2026.03.08.1"
+description: "A model to manage the lifecycle of a LetsEncrypt certificate"
+
+models:
+  - unify_traffic.ts
+
+repository: "https://github.com/stack72/swamp-ubiquity"
+
+additionalFiles:
+  - README.md
+  - LICENSE.txt
