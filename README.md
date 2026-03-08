@@ -54,12 +54,22 @@ swamp vault put secrets UDM_PASSWORD
 
 **Create the model instance:**
 ```bash
-swamp model create @stack72/unifi-traffic udm-traffic \
-  --set mode=local \
-  --set host=192.168.1.1 \
-  --set username=swamp \
-  --set 'password=${{ vault.get(secrets, UDM_PASSWORD) }}' \
-  --set site=default
+swamp model create @stack72/unifi-traffic udm-traffic
+```
+
+**Configure the global arguments:**
+```bash
+swamp model edit udm-traffic
+```
+
+Set the `globalArguments` section in the definition:
+```yaml
+globalArguments:
+  mode: "local"
+  host: "192.168.1.1"
+  username: "swamp"
+  password: ${{ vault.get(secrets, UDM_PASSWORD) }}
+  site: "default"
 ```
 
 > Replace `192.168.1.1` with your UDM's IP address if different.
@@ -81,10 +91,20 @@ swamp vault put secrets UNIFI_API_KEY
 
 **Create the model instance:**
 ```bash
-swamp model create @stack72/unifi-traffic udm-traffic \
-  --set mode=cloud \
-  --set 'apiKey=${{ vault.get(secrets, UNIFI_API_KEY) }}' \
-  --set site=default
+swamp model create @stack72/unifi-traffic udm-traffic
+```
+
+**Configure the global arguments:**
+```bash
+swamp model edit udm-traffic
+```
+
+Set the `globalArguments` section in the definition:
+```yaml
+globalArguments:
+  mode: "cloud"
+  apiKey: ${{ vault.get(secrets, UNIFI_API_KEY) }}
+  site: "default"
 ```
 
 #### Option C: Both (Recommended)
@@ -97,13 +117,23 @@ swamp vault put secrets UNIFI_API_KEY
 ```
 
 ```bash
-swamp model create @stack72/unifi-traffic udm-traffic \
-  --set mode=cloud \
-  --set host=192.168.1.1 \
-  --set username=swamp \
-  --set 'password=${{ vault.get(secrets, UDM_PASSWORD) }}' \
-  --set site=default \
-  --set 'apiKey=${{ vault.get(secrets, UNIFI_API_KEY) }}'
+swamp model create @stack72/unifi-traffic udm-traffic
+```
+
+Then configure the global arguments:
+```bash
+swamp model edit udm-traffic
+```
+
+Set the `globalArguments` section in the definition:
+```yaml
+globalArguments:
+  mode: "cloud"
+  host: "192.168.1.1"
+  username: "swamp"
+  password: ${{ vault.get(secrets, UDM_PASSWORD) }}
+  site: "default"
+  apiKey: ${{ vault.get(secrets, UNIFI_API_KEY) }}
 ```
 
 ### 4. Collect data
