@@ -74,6 +74,22 @@ globalArguments:
 
 > Replace `192.168.1.1` with your UDM's IP address if different.
 
+**MFA-enabled accounts (TOTP):** accounts with MFA enabled reject
+password-only logins with `MFA_AUTH_REQUIRED`. Either use a local-only admin
+(which bypasses SSO MFA, as above), or store the account's base32 TOTP seed
+and add it to the global arguments — the extension derives the current code
+at login, so collection stays unattended:
+
+```bash
+swamp vault put secrets UDM_TOTP_SECRET
+```
+
+```yaml
+globalArguments:
+  # ...
+  totpSecret: ${{ vault.get(secrets, UDM_TOTP_SECRET) }}
+```
+
 #### Option B: Cloud Mode
 
 Connects via the Ubiquiti cloud API. Provides better device name resolution (fingerprint-based names) but requires an API key.
