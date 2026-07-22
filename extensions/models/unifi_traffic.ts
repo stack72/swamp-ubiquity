@@ -2,6 +2,62 @@ import { z } from "npm:zod@4";
 
 const CLOUD_API_BASE = "https://api.ui.com";
 
+// --- TOTP (RFC 6238) -------------------------------------------------------
+// UniFi SSO accounts with MFA enabled reject password-only logins to
+// /api/auth/login with {"code":"MFA_AUTH_REQUIRED"}. Deriving the TOTP code
+// in-process from the account's shared secret keeps local mode runnable
+// unattended.
+
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+// Decode a base32 (RFC 4648) secret into bytes. Tolerates lowercase,
+// embedded whitespace and trailing `=` padding.
+function base32Decode(input: string): Uint8Array<ArrayBuffer> {
+  const clean = input.toUpperCase().replace(/=+$/, "").replace(/\s+/g, "");
+  if (clean.length === 0) throw new Error("Empty base32 secret");
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const ch of clean) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx === -1) throw new Error(`Invalid base32 character: ${ch}`);
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  const view = new Uint8Array(new ArrayBuffer(out.length));
+  view.set(out);
+  return view;
+}
+
+// Derive an RFC 6238 TOTP code (HMAC-SHA1, 30s step, 6 digits) from a
+// base32 secret.
+async function totpCode(secret: string, nowMs = Date.now()): Promise<string> {
+  const counter = Math.floor(nowMs / 1000 / 30);
+  const buf = new ArrayBuffer(8);
+  const view = new DataView(buf);
+  view.setUint32(0, Math.floor(counter / 2 ** 32));
+  view.setUint32(4, counter >>> 0);
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    base32Decode(secret),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf));
+  const offset = sig[sig.length - 1] & 0x0f;
+  const bin = ((sig[offset] & 0x7f) << 24) |
+    (sig[offset + 1] << 16) |
+    (sig[offset + 2] << 8) |
+    sig[offset + 3];
+  return (bin % 10 ** 6).toString().padStart(6, "0");
+}
+
 const GlobalArgsSchema = z.object({
   mode: z.enum(["local", "cloud"]).default("local").describe(
     "Connection mode: 'local' for direct UDM access, 'cloud' for remote via api.ui.com",
@@ -14,6 +70,10 @@ const GlobalArgsSchema = z.object({
   ),
   password: z.string().meta({ sensitive: true }).optional().describe(
     "Local admin password (required for local mode)",
+  ),
+  totpSecret: z.string().meta({ sensitive: true }).optional().describe(
+    "Base32 TOTP secret for MFA-enabled accounts (local mode only). " +
+      "Omit for local-only admin accounts, which bypass SSO MFA.",
   ),
   site: z.string().default("default").describe("UniFi site name"),
   apiKey: z.string().meta({ sensitive: true }).optional().describe(
@@ -128,6 +188,7 @@ async function createLocalClient(
   host: string,
   username: string,
   password: string,
+  totpSecret?: string,
 ): Promise<ApiClient> {
   const baseUrl = `https://${host}`;
 
@@ -191,18 +252,27 @@ async function createLocalClient(
     return new Response(body, { status, headers: responseHeaders });
   }
 
+  const payload: Record<string, unknown> = { username, password, remember: true };
+  // MFA-enabled accounts reject password-only logins with MFA_AUTH_REQUIRED.
+  if (totpSecret) {
+    payload.token = await totpCode(totpSecret);
+  }
+
   const loginResp = await localFetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ username, password, remember: true }),
+    body: JSON.stringify(payload),
   });
 
   if (!loginResp.ok) {
     const text = await loginResp.text();
-    throw new Error(`UniFi login failed (${loginResp.status}): ${text}`);
+    const hint = text.includes("MFA_AUTH_REQUIRED")
+      ? " — this account requires MFA; set `totpSecret`, or use a local-only admin account"
+      : "";
+    throw new Error(`UniFi login failed (${loginResp.status})${hint}: ${text}`);
   }
 
   const csrfToken = loginResp.headers.get("x-csrf-token") || "";
@@ -381,7 +451,7 @@ export const model = {
         "Collect traffic data from the UniFi Dream Machine for the past 24 hours (local or cloud)",
       arguments: z.object({}),
       execute: async (_args, context) => {
-        const { mode, host, username, password, site, apiKey } =
+        const { mode, host, username, password, totpSecret, site, apiKey } =
           context.globalArgs;
         const dataHandles = [];
 
@@ -408,7 +478,7 @@ export const model = {
           await logWriter.writeLine(
             `[${new Date().toISOString()}] Connecting to ${host}...`,
           );
-          client = await createLocalClient(host, username, password);
+          client = await createLocalClient(host, username, password, totpSecret);
           apiBasePath = `/proxy/network/api/s/${site}`;
           await logWriter.writeLine(
             `[${new Date().toISOString()}] Authenticated to local controller`,
